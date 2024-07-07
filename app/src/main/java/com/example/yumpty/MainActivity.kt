@@ -6,20 +6,23 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-//import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
@@ -30,39 +33,23 @@ import com.example.yumpty.ui.theme.YumptyTheme
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
-import androidx.compose.material.Scaffold
-import androidx.compose.material.Text
-import androidx.compose.material.TopAppBar
-import androidx.compose.material.Icon
-import androidx.compose.material.icons.filled.ArrowBack
+import kotlin.random.Random
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.layout.Column
-import androidx.compose.material.FloatingActionButton
-import androidx.compose.material.FabPosition
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.material.TabRow
-import androidx.compose.foundation.layout.Row
-import androidx.compose.material.Tab
-import androidx.compose.material.MaterialTheme
-import androidx.compose.material.ExperimentalMaterialApi
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.material.IconButton
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material.TextField
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.Button
-import androidx.compose.material.Checkbox
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.material.Text
+import androidx.compose.material.Slider
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
+import kotlinx.coroutines.launch
 
-
+@OptIn(ExperimentalComposeUiApi::class)
 class MainActivity : ComponentActivity() {
-    @ExperimentalComposeUiApi
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
@@ -72,7 +59,9 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            YumptyApp()
+            YumptyTheme {
+                YumptyApp()
+            }
         }
     }
 
@@ -90,7 +79,7 @@ class MainActivity : ComponentActivity() {
 
 data class FoodItem(val name: String, val price: Int)
 
-@ExperimentalComposeUiApi
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun YumptyApp() {
     val navController = rememberNavController()
@@ -102,14 +91,23 @@ fun YumptyApp() {
     }
 
     NavHost(navController, startDestination = "main") {
-        composable("main") { Yumpty(navController, foodItems.value) }
-        composable("addItem") { AddItemScreen(navController) }
+        composable("main") { Yumpty(navController, foodItems.value) { newItem ->
+            val updatedItems = foodItems.value + newItem
+            foodItems.value = updatedItems
+            writeFoodItemsToFile(context, updatedItems, "food_items.csv")
+        } }
+        composable("addItem") { AddItemScreen(navController) { newItem ->
+            val updatedItems = foodItems.value + newItem
+            foodItems.value = updatedItems
+            writeFoodItemsToFile(context, updatedItems, "food_items.csv")
+            navController.popBackStack()
+        } }
     }
 }
 
-@ExperimentalComposeUiApi
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
-fun Yumpty(navController: NavController, foodItems: List<FoodItem>) {
+fun Yumpty(navController: NavController, foodItems: List<FoodItem>, onAddItem: (FoodItem) -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -120,9 +118,9 @@ fun Yumpty(navController: NavController, foodItems: List<FoodItem>) {
             Column {
                 TabLayout(listOf("Food", "Fun")) { tab ->
                     when (tab) {
-                        "Food" -> FoodScreen(foodItems = foodItems)
+                        "Food" -> FoodScreen(foodItems, onAddItem)
                         "Fun" -> FunScreen()
-                        else -> FoodScreen(foodItems = foodItems)
+                        else -> FoodScreen(foodItems, onAddItem)
                     }
                 }
             }
@@ -171,14 +169,35 @@ fun TabLayout(
     }
 }
 
-
 @Composable
-fun FoodScreen(foodItems: List<FoodItem>) {
-    Column {
+fun FoodScreen(foodItems: List<FoodItem>, onAddItem: (FoodItem) -> Unit) {
+    val context = LocalContext.current
+    var selectedItems by remember { mutableStateOf(setOf<FoodItem>()) }
+    val totalPrice by remember { derivedStateOf { selectedItems.sumOf { it.price } } }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(color = Color.White),
+        verticalArrangement = Arrangement.Top,
+        horizontalAlignment = Alignment.Start,
+    ) {
+        Text(
+            text = "Total Price: $$totalPrice",
+            modifier = Modifier.padding(top = 30.dp, bottom = 10.dp, start = 25.dp),
+            fontSize = 20.sp,
+            color = Color.Black
+        )
         RecyclerView(
             foodItems = foodItems,
-            selectedItems = emptySet(),
-            onItemCheckedChange = { _, _ -> }
+            selectedItems = selectedItems,
+            onItemCheckedChange = { item, isChecked ->
+                selectedItems = if (isChecked) {
+                    selectedItems + item
+                } else {
+                    selectedItems - item
+                }
+            }
         )
     }
 }
@@ -234,20 +253,54 @@ fun ListItem(item: FoodItem, isChecked: Boolean, onCheckedChange: (Boolean) -> U
 
 @Composable
 fun FunScreen() {
+    var sliderValue by remember { mutableStateOf(0f) }
+    var spinResult by remember { mutableStateOf(0) }
+    val rotation = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+
+    val wheelImageRes = R.drawable.spinwheel // Use a single image resource
+
     Column(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.fillMaxSize()
     ) {
-        Text(text = "Fun Tab Content")
+        Image(
+            painter = painterResource(id = wheelImageRes),
+            contentDescription = null,
+            modifier = Modifier
+                .size(200.dp)
+                .graphicsLayer(rotationZ = rotation.value)
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Slider(
+            value = sliderValue,
+            onValueChange = { sliderValue = it },
+            valueRange = 0f..100f,
+            modifier = Modifier.padding(horizontal = 16.dp)
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(onClick = {
+            spinResult = Random.nextInt(1, 6)
+            val spinDegrees = spinResult * 360 + (Random.nextInt(5) * 60)
+            scope.launch {
+                rotation.animateTo(
+                    targetValue = spinDegrees.toFloat(),
+                    animationSpec = tween(durationMillis = 2000)
+                )
+            }
+        }) {
+            Text("Spin the Wheel")
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(text = "Spin Result: $spinResult")
     }
 }
-
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-fun AddItemScreen(navController: NavController) {
-    var name by remember { mutableStateOf(TextFieldValue()) }
-    var price by remember { mutableStateOf(TextFieldValue()) }
+fun AddItemScreen(navController: NavController, onAddItem: (FoodItem) -> Unit) {
+    var name by remember { mutableStateOf("") }
+    var price by remember { mutableStateOf("") }
 
     Scaffold(
         topBar = {
@@ -270,14 +323,14 @@ fun AddItemScreen(navController: NavController) {
                     .padding(16.dp)
             ) {
                 TextField(
-                    value = name.text,
+                    value = name,
                     onValueChange = { name = it },
                     label = { Text("Name") },
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 TextField(
-                    value = price.text,
+                    value = price,
                     onValueChange = { price = it },
                     label = { Text("Price") },
                     modifier = Modifier.fillMaxWidth()
@@ -285,93 +338,55 @@ fun AddItemScreen(navController: NavController) {
                 Spacer(modifier = Modifier.height(16.dp))
                 Button(
                     onClick = {
-                        val newItem = FoodItem(name = name.text, price = price.text.toIntOrNull() ?: 0)
-                        writeFoodItemsToFile(LocalContext.current, listOf(newItem), "food_items.csv")
-                        navController.popBackStack()
+                        val newItem = FoodItem(name = name, price = price.toInt())
+                        onAddItem(newItem)
                     },
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                    modifier = Modifier.align(Alignment.End)
                 ) {
-                    Text(text = "Save")
+                    Text("Add Item")
                 }
             }
         }
     )
 }
 
-private fun writeFoodItemsToFile(
-    context: Context,
-    foodItems: List<FoodItem>,
-    fileName: String
-) {
+fun writeFoodItemsToFile(context: Context, foodItems: List<FoodItem>, fileName: String) {
     val file = File(context.filesDir, fileName)
     try {
-        FileOutputStream(file, true).bufferedWriter().use { writer ->
-            foodItems.forEach { item ->
-                writer.write("${item.name},${item.price}\n")
-            }
-        }
-    } catch (e: IOException) {
-        e.printStackTrace()
-    }
-}
-
-private fun readFoodItemsFromFile(context: Context, fileName: String): List<FoodItem> {
-    val file = File(context.filesDir, fileName)
-    val foodItems = mutableListOf<FoodItem>()
-    try {
-        file.bufferedReader().useLines { lines ->
-            lines.forEach { line ->
-                val parts = line.split(",")
-                if (parts.size == 2) {
-                    val name = parts[0]
-                    val price = parts[1].toIntOrNull() ?: 0
-                    foodItems.add(FoodItem(name, price))
+        FileOutputStream(file).use { stream ->
+            stream.bufferedWriter().use { writer ->
+                foodItems.forEach { item ->
+                    writer.write("${item.name},${item.price}\n")
                 }
             }
         }
     } catch (e: IOException) {
         e.printStackTrace()
     }
-    return foodItems
 }
 
-@OptIn(ExperimentalComposeUiApi::class)
+fun readFoodItemsFromFile(context: Context, fileName: String): List<FoodItem> {
+    val file = File(context.filesDir, fileName)
+    if (!file.exists()) {
+        return emptyList()
+    }
+    return try {
+        file.bufferedReader().useLines { lines ->
+            lines.map { line ->
+                val parts = line.split(",")
+                FoodItem(parts[0], parts[1].toInt())
+            }.toList()
+        }
+    } catch (e: IOException) {
+        e.printStackTrace()
+        emptyList()
+    }
+}
+
 @Preview(showBackground = true)
 @Composable
 fun DefaultPreview() {
     YumptyTheme {
-        val navController = rememberNavController()
-        Yumpty(navController)
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun FoodScreenPreview() {
-    val foodItems = listOf(
-        FoodItem("Pizza", 12),
-        FoodItem("Burger", 8),
-        FoodItem("Salad", 6)
-    )
-    YumptyTheme {
-        FoodScreen(foodItems = foodItems)
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun FunScreenPreview() {
-    YumptyTheme {
-        FunScreen()
-    }
-}
-
-@OptIn(ExperimentalComposeUiApi::class)
-@Preview(showBackground = true)
-@Composable
-fun AddItemScreenPreview() {
-    YumptyTheme {
-        val navController = rememberNavController()
-        AddItemScreen(navController = navController)
+        YumptyApp()
     }
 }

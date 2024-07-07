@@ -73,6 +73,7 @@ dependencies {
     implementation("androidx.compose.ui:ui:1.1.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.4.0-alpha01")
     testImplementation(libs.junit)
+    implementation("androidx.compose.ui:ui:$compose_version")
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
